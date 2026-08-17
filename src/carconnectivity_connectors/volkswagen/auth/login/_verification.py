@@ -28,6 +28,7 @@ class LoginVerifier:
         configured_client_id: str,
         expected_username: str,
     ) -> None:
+        """Warn when parsed IDKit values differ from expected values."""
         csrf_param = check_str(idk_obj.obj.get("csrf_parameterName"))
         if csrf_param != self._EXPECTED_CSRF_PARAM:
             self._warn(
@@ -68,6 +69,7 @@ class LoginVerifier:
         planned_url: str,
         planned_payload: dict,
     ) -> None:
+        """Warn when a planned request differs from the page form."""
         # PASSWORD page is JS-driven; no static form to compare against.
         if stage == IdKitStage.PASSWORD:
             return

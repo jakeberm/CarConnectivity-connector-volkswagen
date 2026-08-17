@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass
 from http.cookiejar import Cookie
 from pathlib import Path
-from typing import Callable
+from typing import Callable, NoReturn
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 import requests
@@ -131,7 +132,7 @@ class VWLoginFlow:
 
             interval = safe_int(device.get("interval", 5), 5)
             expires_in = safe_int(device.get("expires_in", 330), 330)
-            max_wait = max(330, max(expires_in - 5, 30))
+            max_wait = max(330, expires_in - 5, 30)
 
             try:
                 self.run_browser_route(
@@ -142,8 +143,6 @@ class VWLoginFlow:
                     session=api_session if not own_session else None,
                     mode="device",
                 )
-            except (LoginFlowChangedError, LoginPageParseError):
-                raise
             except _IdKitError as error:
                 raise LoginPageParseError(str(error)) from error
 
@@ -322,7 +321,7 @@ class VWLoginFlow:
                     # OIDC: optionally append CONFIRM if consent page appears after password
                     try:
                         next_stage = idk_obj.stage
-                    except _IdKitError as error:
+                    except _IdKitError:
                         if cookies_file is not None:
                             _save_cookies(browser, cookies_file)
                         return current_url
@@ -630,13 +629,13 @@ class VWLoginFlow:
 
     def _raise_flow_changed(
         self, stage: str, current_url: str, html: str, reason: str
-    ) -> None:
+    ) -> NoReturn:
         LOG.error("Login flow changed (stage=%s, url=%s): %s", stage, current_url, reason)
         raise LoginFlowChangedError(stage=stage)
 
     def _raise_page_parse_error(
         self, stage: str, current_url: str, html: str, error: _IdKitError
-    ) -> None:
+    ) -> NoReturn:
         LOG.error("IDKit parse failed (stage=%s, url=%s): %s", stage, current_url, error)
         raise LoginPageParseError(
             f"IDKit parse failed at {stage} (url={current_url}): {error}"
@@ -691,7 +690,16 @@ def _save_cookies(session: requests.Session, path: Path) -> None:
             "path": cookie.path or "/",
         })
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    file_descriptor = os.open(
+        path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
+    )
+    try:
+        os.fchmod(file_descriptor, 0o600)
+    except Exception:
+        os.close(file_descriptor)
+        raise
+    with os.fdopen(file_descriptor, "w", encoding="utf-8") as cookie_file:
+        json.dump(data, cookie_file, indent=2)
 
 
 def _load_cookies(session: requests.Session, path: Path, default_domain: str) -> None:

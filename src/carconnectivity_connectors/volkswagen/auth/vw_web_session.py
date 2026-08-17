@@ -32,6 +32,16 @@ if TYPE_CHECKING:
 LOG: logging.Logger = logging.getLogger("carconnectivity.connectors.volkswagen.auth")
 
 
+def _safe_url_for_logging(url: str) -> str:
+    parsed = urlsplit(url)
+    safe_url = parsed._replace(query="", fragment="").geturl()
+    if parsed.query:
+        safe_url += "?..."
+    if parsed.fragment:
+        safe_url += "#..."
+    return safe_url
+
+
 class VWWebSession(OpenIDSession):
     """
     VWWebSession handles the web authentication process for Volkswagen's web services.
@@ -123,7 +133,7 @@ class VWWebSession(OpenIDSession):
             raise ValueError('Redirect URI is not set')
         # Check URL for terms and conditions
         while True:
-            LOG.debug("Processing URL in while loop: %s", url[:150])
+            LOG.debug("Processing URL in while loop: %s", _safe_url_for_logging(url))
 
             # Check for custom scheme FIRST, before any URL manipulation
             if url.startswith('weconnect://authenticated'):
@@ -150,7 +160,7 @@ class VWWebSession(OpenIDSession):
                     raise AuthenticationError(f'It seems like you need to accept the terms and conditions. '
                                               f'Try to visit the URL "{url}" or log into smartphone app.')
 
-            LOG.debug("Making HTTP GET request to: %s", url[:100])
+            LOG.debug("Making HTTP GET request to: %s", _safe_url_for_logging(url))
             response = self.websession.get(url, allow_redirects=False)
             if response.status_code == requests.codes['internal_server_error']:
                 raise RetrievalError('Temporary server error during login')
@@ -161,7 +171,7 @@ class VWWebSession(OpenIDSession):
                 raise APICompatibilityError('Forwarding without Location in headers')
 
             url = response.headers['Location']
-            LOG.debug("Got Location header, new URL: %s", url[:100])
+            LOG.debug("Got Location header, new URL: %s", _safe_url_for_logging(url))
 
             # Check again after getting new URL from Location header
             if url.startswith('weconnect://authenticated'):
@@ -178,21 +188,21 @@ class VWWebSession(OpenIDSession):
                 LOG.info("OAuth flow completed, received redirect URI")
                 break
 
-        LOG.debug("Exited while loop, final URL before transformation: %s", url[:150])
+        LOG.debug("Exited while loop, final URL before transformation: %s", _safe_url_for_logging(url))
 
         # Handle the transformation based on the URL pattern
         if url.startswith('weconnect://authenticated#'):
             # Transform weconnect://authenticated# to https://egal?
             transformed_url = url.replace('weconnect://authenticated#', 'https://egal?')
-            LOG.debug("Transformed weconnect://authenticated# URL to: %s", transformed_url[:150])
+            LOG.debug("Transformed weconnect://authenticated# URL to: %s", _safe_url_for_logging(transformed_url))
             return transformed_url
         elif self.redirect_uri and url.startswith(self.redirect_uri + '#'):
             # Transform redirect_uri# to https://egal?
             transformed_url = url.replace(self.redirect_uri + '#', 'https://egal?')
-            LOG.debug("Transformed redirect_uri# URL to: %s", transformed_url[:150])
+            LOG.debug("Transformed redirect_uri# URL to: %s", _safe_url_for_logging(transformed_url))
             return transformed_url
         else:
-            LOG.warning("URL doesn't match expected patterns, returning as-is: %s", url[:150])
+            LOG.warning("URL doesn't match expected patterns, returning as-is: %s", _safe_url_for_logging(url))
             return url
 
     def _is_oauth_final_url(self, url: str) -> bool:
@@ -227,7 +237,7 @@ class VWWebSession(OpenIDSession):
             mode="oidc",
             is_final_url=self._is_oauth_final_url,
         )
-        LOG.debug("IDKit auth flow finished at: %s", final_url[:150])
+        LOG.debug("IDKit auth flow finished at: %s", _safe_url_for_logging(final_url))
         return final_url
 
     def _do_web_auth_legacy(self, url: str) -> str:
@@ -271,11 +281,11 @@ class VWWebSession(OpenIDSession):
             return None
 
         while True:
-            LOG.debug("Attempting to fetch: %s", url[:100])
+            LOG.debug("Attempting to fetch: %s", _safe_url_for_logging(url))
 
             # Check for custom URL schemes during redirect loop
             if url.startswith('weconnect://'):
-                LOG.info("[_get_login_form] Reached OAuth callback URL during redirects: %s", url[:100])
+                LOG.info("[_get_login_form] Reached OAuth callback URL during redirects: %s", _safe_url_for_logging(url))
                 return None
 
             response = self.websession.get(url, allow_redirects=False)
@@ -291,7 +301,7 @@ class VWWebSession(OpenIDSession):
 
                 # Check if the new URL is a custom scheme URL
                 if url.startswith('weconnect://'):
-                    LOG.info("[_get_login_form] OAuth callback URL found in Location header: %s", url[:100])
+                    LOG.info("[_get_login_form] OAuth callback URL found in Location header: %s", _safe_url_for_logging(url))
                     return None
 
                 continue
@@ -432,7 +442,7 @@ class VWWebSession(OpenIDSession):
 
         # Post to login URL
         login_url = f'https://identity.vwgroup.io/u/login?state={state}'
-        LOG.debug("Posting to login URL: %s", login_url)
+        LOG.debug("Posting to login URL: %s", _safe_url_for_logging(login_url))
         response = self.websession.post(login_url, data=login_form, allow_redirects=False)
 
         if response.status_code not in (requests.codes['found'], requests.codes['see_other']):
@@ -443,10 +453,10 @@ class VWWebSession(OpenIDSession):
 
         # Follow redirects to get the final URL with authorization code
         redirect_url = response.headers['Location']
-        LOG.debug("Starting redirect follow loop with URL: %s", redirect_url[:150])
+        LOG.debug("Starting redirect follow loop with URL: %s", _safe_url_for_logging(redirect_url))
         max_depth = 10
         while max_depth > 0:
-            LOG.debug("Loop iteration, max_depth=%s, URL: %s", max_depth, redirect_url[:150])
+            LOG.debug("Loop iteration, max_depth=%s, URL: %s", max_depth, _safe_url_for_logging(redirect_url))
 
             # Check for custom scheme IMMEDIATELY before any processing
             if redirect_url.startswith('weconnect://authenticated'):
@@ -463,9 +473,9 @@ class VWWebSession(OpenIDSession):
 
             # Only process non-custom scheme URLs
             redirect_url = urljoin('https://identity.vwgroup.io', redirect_url)
-            LOG.debug("URL after urljoin: %s", redirect_url[:150])
+            LOG.debug("URL after urljoin: %s", _safe_url_for_logging(redirect_url))
 
-            LOG.debug("Making HTTP GET request to: %s", redirect_url[:100])
+            LOG.debug("Making HTTP GET request to: %s", _safe_url_for_logging(redirect_url))
             response = self.websession.get(redirect_url, allow_redirects=False)
 
             if response.status_code == requests.codes['internal_server_error']:
@@ -476,7 +486,7 @@ class VWWebSession(OpenIDSession):
                 raise APICompatibilityError('No Location header in redirect')
 
             redirect_url = response.headers['Location']
-            LOG.debug("Got Location header: %s", redirect_url[:150])
+            LOG.debug("Got Location header: %s", _safe_url_for_logging(redirect_url))
 
             # Check again after getting new redirect URL
             if redirect_url.startswith('weconnect://authenticated'):
@@ -490,7 +500,7 @@ class VWWebSession(OpenIDSession):
 
             max_depth -= 1
 
-        LOG.debug("Exiting redirect loop after max iterations, returning URL: %s", redirect_url[:150])
+        LOG.debug("Exiting redirect loop after max iterations, returning URL: %s", _safe_url_for_logging(redirect_url))
         return redirect_url
 
     def _handle_consent_form(self, url: str) -> str:

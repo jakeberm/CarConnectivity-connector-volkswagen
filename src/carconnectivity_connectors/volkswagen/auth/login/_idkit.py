@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 from urllib.parse import parse_qs, urlparse
 
-import chompjs
+import json5
 from bs4 import BeautifulSoup
 
 from carconnectivity_connectors.volkswagen.auth.login.util import check_str
@@ -17,8 +17,10 @@ class _IdKitError(Exception):
 
 
 class IdKitStage(str, Enum):
+    """Known stages in the IDKit login flow."""
+
     IDENTIFIER = "loginIdentifier"
-    PASSWORD = "loginAuthenticate"
+    PASSWORD = "loginAuthenticate"  # nosec B105
     CONFIRM = "codeConfirmation"
     SUCCESS = "verificationSuccess"
 
@@ -208,7 +210,7 @@ class IdKitPageObjectExtractor:
             if "{" not in rhs:
                 raise _IdKitError(f"Found {cls._ASSIGNMENT} but no object literal")
             try:
-                parsed = chompjs.parse_js_object(rhs)
+                parsed = json5.loads(rhs)
             except ValueError as error:
                 raise _IdKitError(f"Failed to parse {cls._ASSIGNMENT}: {error}") from error
             if not isinstance(parsed, dict):
