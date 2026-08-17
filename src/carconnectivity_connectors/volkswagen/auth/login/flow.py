@@ -516,7 +516,7 @@ class VWLoginFlow:
             idk_info.set_user_code(idk_obj.user_code)
             idk_info.set_user_id(idk_obj.user_id)
             idk_info.set_client_identity_name(idk_obj.client_identity_name)
-        elif stage not in (IdKitStage.PASSWORD, IdKitStage.SUCCESS):
+        elif stage != IdKitStage.SUCCESS:
             raise LoginFlowChangedError(stage=stage.value)
 
     def _pick_route(
